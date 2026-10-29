@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fishy: refund photo check</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #edf0f3; --surface: #ffffff; --ink: #17202b; --muted: #566171; --line: #d3dae2;
+  --flag: #b3173f; --clear: #137a66; --focus: #2f4bd8;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0f141a; --surface: #171e26; --ink: #e8edf2; --muted: #9aa6b4; --line: #2a3441;
+          --flag: #ff7b97; --clear: #3cc9a8; --focus: #8aa0ff; }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); line-height: 1.5;
+       font-family: "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", sans-serif; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 32px 20px 64px; }
+h1 { font-size: clamp(1.8rem, 4vw, 2.6rem); line-height: 1.1; margin: 0 0 8px; font-weight: 700; letter-spacing: -0.02em; }
+.lede { margin: 0 0 28px; color: var(--muted); max-width: 56ch; }
+.grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr); gap: 32px; align-items: start; }
+@media (max-width: 820px) { .grid { grid-template-columns: 1fr; gap: 24px; } }
+
+/* stage: the photo itself is the hero */
+.stage { position: relative; aspect-ratio: 1 / 1; background: var(--surface); border-radius: 10px;
+         border: 1.5px dashed var(--line); overflow: hidden; }
+.stage.has-image { border-style: solid; }
+.stage.drag { border-color: var(--focus); }
+.stage canvas { width: 100%; height: 100%; display: block; }
+.drop { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+        justify-content: center; gap: 6px; text-align: center; padding: 24px; cursor: pointer; }
+.drop strong { font-size: 1.25rem; font-weight: 600; }
+.drop span { color: var(--muted); max-width: 32ch; }
+.stage:focus-within { outline: 3px solid var(--focus); outline-offset: 2px; }
+#file { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.busy { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 10px; background: color-mix(in srgb, var(--bg) 78%, transparent); text-align: center; padding: 24px; }
+.bar { width: 160px; height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.bar::after { content: ""; display: block; width: 40%; height: 100%; background: var(--ink);
+              animation: slide 1.1s ease-in-out infinite alternate; }
+@keyframes slide { from { transform: translateX(-10%); } to { transform: translateX(150%); } }
+@media (prefers-reduced-motion: reduce) { .bar::after { animation: none; width: 100%; } }
+
+/* controls under the stage */
+.tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; min-height: 40px; }
+.switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; color: var(--muted); }
+.switch input { width: 18px; height: 18px; accent-color: var(--ink); }
+button, .btn { font: inherit; font-weight: 600; color: var(--surface); background: var(--ink); border: 0;
+               border-radius: 8px; padding: 9px 16px; cursor: pointer; }
+button:focus-visible, .switch input:focus-visible, summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+
+/* result panel */
+.panel > * + * { margin-top: 22px; }
+.idle { color: var(--muted); }
+.idle p { margin: 0 0 10px; }
+.verdict { border-left: 5px solid var(--clear); padding: 2px 0 2px 14px; }
+.verdict.flag { border-color: var(--flag); }
+.verdict h2 { margin: 0; font-size: 1.7rem; line-height: 1.15; font-weight: 700; letter-spacing: -0.01em; }
+.verdict p { margin: 6px 0 0; color: var(--muted); }
+.meter { position: relative; height: 10px; border-radius: 5px; background: var(--line); }
+.fill { height: 100%; border-radius: 5px; background: var(--clear); }
+.flag .fill, .meter.flag .fill { background: var(--flag); }
+.tick { position: absolute; top: -6px; width: 2px; height: 22px; background: var(--ink); }
+.legend { display: flex; justify-content: space-between; margin-top: 10px; font-size: .95rem; color: var(--muted); }
+.legend b { color: var(--ink); font-weight: 600; }
+.where h3, details h3 { margin: 0 0 6px; font-size: 1rem; font-weight: 600; }
+.where p { margin: 0; color: var(--muted); }
+.notice { border-radius: 8px; padding: 10px 12px; background: color-mix(in srgb, var(--flag) 12%, var(--surface));
+          border: 1px solid color-mix(in srgb, var(--flag) 40%, var(--line)); }
+.slow { color: var(--muted); font-size: .95rem; margin: 0; }
+details { border-top: 1px solid var(--line); padding-top: 14px; }
+summary { cursor: pointer; font-weight: 600; }
+details ul { margin: 10px 0 0; padding-left: 20px; color: var(--muted); }
+details li + li { margin-top: 6px; }
+.legendbar { height: 8px; border-radius: 4px; margin: 8px 0 4px;
+             background: linear-gradient(90deg, #00007f, #0000ff, #00ffff, #ffff00, #ff0000, #7f0000); }
+.legendbar + div { display: flex; justify-content: space-between; font-size: .85rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <h1>Check a refund photo</h1>
+  <p class="lede">Upload the photo a customer sent with a refund claim. The checker scores how likely it was AI-edited and shows which regions looked most suspicious.</p>
+
+  <div class="grid">
+    <section aria-label="Photo">
+      <div class="stage" id="stage">
+        <canvas id="canvas" width="512" height="512" hidden role="img" aria-label="Uploaded photo with heatmap"></canvas>
+        <label class="drop" id="drop" for="file">
+          <strong>Drop a photo here</strong>
+          <span>or choose a JPG, PNG or WebP file. Up to 12 MB.</span>
+        </label>
+        <input id="file" type="file" accept="image/*">
+        <div class="busy" id="busy" hidden aria-live="polite">
+          <div class="bar"></div>
+          <div>Checking the photo…</div>
+        </div>
+      </div>
+      <div class="tools">
+        <label class="switch" id="heatWrap" hidden><input type="checkbox" id="heat" checked> Show heatmap</label>
+        <button type="button" id="again" hidden>Check another photo</button>
+      </div>
+    </section>
+
+    <section class="panel" aria-live="polite" aria-label="Result">
+      <div class="notice" id="error" role="alert" hidden></div>
+      <p class="slow" id="slow" hidden>The free server may be waking up. The first check can take a minute.</p>
+
+      <div class="idle" id="idle">
+        <p>The result appears here.</p>
+        <p>A flag means “send to a person for review”, not “this is fake”.</p>
+      </div>
+
+      <div id="result" hidden>
+        <div class="verdict" id="verdict">
+          <h2 id="verdictText"></h2>
+          <p id="verdictSub"></p>
+        </div>
+        <div style="margin-top:22px">
+          <div class="meter" id="meter"><div class="fill" id="fill"></div><div class="tick" id="tick"></div></div>
+          <div class="legend"><span>Score <b id="score"></b></span><span>Flag line <b id="line"></b></span></div>
+        </div>
+        <div class="where" style="margin-top:22px">
+          <h3>Most suspicious regions</h3>
+          <p id="regions"></p>
+          <div class="legendbar" aria-hidden="true"></div>
+          <div aria-hidden="true"><span>less suspicious</span><span>more suspicious</span></div>
+        </div>
+      </div>
+
+      <details id="about">
+        <summary>About this model</summary>
+        <div id="aboutBody" style="margin-top:10px"></div>
+      </details>
+    </section>
+  </div>
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const el = {
+  stage: $('#stage'), canvas: $('#canvas'), drop: $('#drop'), file: $('#file'), busy: $('#busy'),
+  heat: $('#heat'), heatWrap: $('#heatWrap'), again: $('#again'), error: $('#error'), slow: $('#slow'),
+  idle: $('#idle'), result: $('#result'), verdict: $('#verdict'), verdictText: $('#verdictText'),
+  verdictSub: $('#verdictSub'), meter: $('#meter'), fill: $('#fill'), tick: $('#tick'),
+  score: $('#score'), line: $('#line'), regions: $('#regions'), aboutBody: $('#aboutBody'),
+};
+const ctx = el.canvas.getContext('2d');
+let current = null;
+const pct = (v, d = 1) => (v * 100).toFixed(d) + '%';
+
+function setState(state) {
+  const hasResult = state === 'result';
+  el.drop.hidden = state !== 'empty';
+  el.canvas.hidden = !hasResult;
+  el.busy.hidden = state !== 'loading';
+  el.stage.classList.toggle('has-image', hasResult);
+  el.result.hidden = !hasResult;
+  el.idle.hidden = hasResult;
+  el.heatWrap.hidden = !hasResult;
+  el.again.hidden = !hasResult;
+}
+function showError(msg) { el.error.textContent = msg; el.error.hidden = !msg; }
+
+function jet(t) {
+  const c = (v) => Math.max(0, Math.min(1, v));
+  return [1.5 - Math.abs(4 * t - 3), 1.5 - Math.abs(4 * t - 2), 1.5 - Math.abs(4 * t - 1)].map((v) => Math.round(c(v) * 255));
+}
+
+function paint() {
+  if (!current) return;
+  const { img, data } = current;
+  const S = (el.canvas.width = el.canvas.height = img.naturalWidth);
+  ctx.drawImage(img, 0, 0, S, S);
+  if (!el.heat.checked) return;
+  const g = data.grid;
+  const off = document.createElement('canvas');
+  off.width = off.height = g;
+  const octx = off.getContext('2d');
+  const px = octx.createImageData(g, g);
+  data.patches.forEach((v, i) => px.data.set([...jet(v), 255], i * 4));
+  octx.putImageData(px, 0, 0);
+  ctx.save();
+  ctx.globalAlpha = 0.45;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(off, 0, 0, S, S);        // 8x8 map scaled up and smoothed
+  ctx.restore();
+  const cell = S / g;
+  ctx.lineWidth = Math.max(2, S / 200);
+  data.top.forEach(([r, c]) => {
+    ctx.strokeStyle = 'rgba(0,0,0,.55)';
+    ctx.strokeRect(c * cell + 1, r * cell + 1, cell - 2, cell - 2);
+    ctx.strokeStyle = '#fff';
+    ctx.strokeRect(c * cell + 3, r * cell + 3, cell - 6, cell - 6);
+  });
+}
+
+function render(d) {
+  el.verdict.classList.toggle('flag', d.flagged);
+  el.meter.classList.toggle('flag', d.flagged);
+  el.verdictText.textContent = d.flagged ? 'Flag for review' : 'Not flagged';
+  el.verdictSub.textContent = d.flagged
+    ? 'The score is above the flag line. A person should look at this photo.'
+    : 'The model wasn’t confident enough to flag it. That doesn’t prove the photo is genuine.';
+  el.fill.style.width = Math.min(100, d.score * 100) + '%';
+  el.tick.style.left = `calc(${d.threshold * 100}% - 1px)`;
+  el.score.textContent = pct(d.score);
+  el.line.textContent = pct(d.threshold);
+  el.regions.textContent = d.top.map(([r, c], i) => `${i + 1}. row ${r + 1}, column ${c + 1}`).join('   ');
+  paint();
+}
+
+async function check(file) {
+  showError('');
+  if (!file) return;
+  if (!file.type.startsWith('image/')) return showError('That file isn’t an image. Choose a JPG, PNG or WebP photo.');
+  if (file.size > 12 * 1024 * 1024) return showError('That photo is over 12 MB. Choose a smaller one.');
+  setState('loading');
+  const slow = setTimeout(() => (el.slow.hidden = false), 8000);
+  try {
+    const fd = new FormData();
+    fd.append('image', file);
+    const r = await fetch('/api/check', { method: 'POST', body: fd });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || 'The check failed. Try again.');
+    const img = new Image();
+    img.src = data.preview;
+    await img.decode();
+    current = { img, data };
+    setState('result');
+    render(data);
+  } catch (e) {
+    current = null;
+    setState('empty');
+    showError(e.message || 'The check failed. Try again.');
+  } finally {
+    clearTimeout(slow);
+    el.slow.hidden = true;
+    el.file.value = '';
+  }
+}
+
+el.file.addEventListener('change', () => check(el.file.files[0]));
+el.heat.addEventListener('change', paint);
+el.again.addEventListener('click', () => { current = null; showError(''); setState('empty'); el.file.click(); });
+['dragenter', 'dragover'].forEach((t) => el.stage.addEventListener(t, (e) => { e.preventDefault(); el.stage.classList.add('drag'); }));
+['dragleave', 'drop'].forEach((t) => el.stage.addEventListener(t, (e) => { e.preventDefault(); el.stage.classList.remove('drag'); }));
+el.stage.addEventListener('drop', (e) => check(e.dataTransfer.files[0]));
+
+async function loadInfo() {
+  try {
+    const info = await (await fetch('/api/info')).json();
+    if (!info.ready) {
+      showError('The model isn’t loaded on this server. ' + (info.error || ''));
+      el.file.disabled = true;
+    }
+    const m = info.model || {};
+    const items = [];
+    if (m.cv_auc != null) items.push(`Cross-validated on 500 images (100 real photos, 400 fakes): ROC-AUC ${m.cv_auc.toFixed(2)}, balanced accuracy ${m.cv_balanced_acc.toFixed(2)} at the default cut-off.`);
+    if (m.fakes_caught != null) items.push(`At this flag line, about ${pct(m.real_cleared, 0)} of real photos are cleared and ${pct(m.fakes_caught, 0)} of fakes are caught. The line was picked on the same scores it’s measured on, so treat these as slightly optimistic.`);
+    items.push('Trained on only 100 real photos. It may be spotting “went through an AI generator” rather than “food looks damaged”.');
+    items.push('The heatmap shows where the model looked, and it only points at the real edit somewhat more often than chance.');
+    items.push('Use it to prioritise human review, never to deny a refund on its own.');
+    el.aboutBody.innerHTML = '<ul>' + items.map((t) => `<li>${t}</li>`).join('') + '</ul>';
+  } catch (_) { /* leave the panel empty */ }
+}
+
+setState('empty');
+loadInfo();
+</script>
+</body>
+</html>
